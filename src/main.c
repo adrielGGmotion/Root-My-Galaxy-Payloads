@@ -551,7 +551,15 @@ int run_exploit(int argc, char **argv) {
     APP_FOPS_DURABLE_POSTWRITE_LOG
       /* Preserve the authoritative result even if RDB dies before dlopen returns. */
       SYSCHK(fflush(NULL));
-      SYSCHK(fsync(STDOUT_FILENO));
+      /* fsync on a pipe returns EINVAL and would abort the run (exit 255);
+         only fsync when stdout is actually a regular file. */
+      struct stat stdout_stat;
+      if (fstat(STDOUT_FILENO, &stdout_stat) == 0 &&
+          S_ISREG(stdout_stat.st_mode)) {
+        SYSCHK(fsync(STDOUT_FILENO));
+      } else {
+        pr_info("durable postwrite stdout not a regular file; fsync skipped\n");
+      }
 #endif
       fops_data_alias_deferred = 0;
     }

