@@ -185,11 +185,11 @@
       "kernelVersions": ["6.1.157"],
       "requiresFreshP0Session": true,
       "exploit": {
-        "url": "https://raw.githubusercontent.com/BuSung-dev/Root-My-Galaxy-Payloads/main/artifacts/a55x-A556EXXUEDZE4/cve-2026-43499-app.so",
+        "url": "https://raw.githubusercontent.com/adrielGGmotion/Root-My-Galaxy-Payloads/add-a556e-ze4/artifacts/a55x-A556EXXUEDZE4/cve-2026-43499-app.so",
         "size": 104128
       },
       "kernelsu": {
-        "url": "https://raw.githubusercontent.com/BuSung-dev/Root-My-Galaxy-Payloads/main/kernelsu/ksud-a55x-A556EXXUEDZE4-kdp",
+        "url": "https://raw.githubusercontent.com/adrielGGmotion/Root-My-Galaxy-Payloads/add-a556e-ze4/kernelsu/ksud-a55x-A556EXXUEDZE4-kdp",
         "size": 3608304
       }
     }
