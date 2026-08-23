@@ -23,9 +23,9 @@
 #define COMPACT_RT_MUTEX_WAITER 1
 
 /* Runtime arbitration pending: static fd-set/waiter overlap analysis left a
- * -0x48 gap (see fw/a556e-porting-notes.md 7a). Initial value follows the
- * same-KMI sibling; confirm via SLIDE_ONLY + diag stages before production. */
-#define SLIDE_PSELECT_WORD_SHIFT 0
+ * -0x48 gap (see fw/a556e-porting-notes.md 7a). Exynos 6.1 family
+ * (E2S/E1S DZDR/DZE1) uses 3; applying same. */
+#define SLIDE_PSELECT_WORD_SHIFT 3
 
 #define KIMAGE_TEXT_BASE 0xffffffc008000000ULL
 #define P0_PAGE_OFFSET 0xffffff8000000000ULL
