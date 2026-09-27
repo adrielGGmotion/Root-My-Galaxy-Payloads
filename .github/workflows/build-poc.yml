@@ -1,0 +1,28 @@
+name: Build dma_buf PoC
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install NDK r29
+        run: |
+          wget -q https://dl.google.com/android/repository/android-ndk-r29-linux.zip
+          unzip -q android-ndk-r29-linux.zip
+          echo "ANDROID_NDK_HOME=$PWD/android-ndk-r29" >> $GITHUB_ENV
+
+      - name: Compile PoC
+        run: |
+          CC=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android35-clang
+          $CC -static -O2 -pthread -o dma_buf_poc poc/dma_buf_poc.c
+          ls -la dma_buf_poc
+          file dma_buf_poc
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dma-buf-poc
+          path: dma_buf_poc

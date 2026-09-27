@@ -1,0 +1,28 @@
+name: Find string offsets in kernel
+
+on:
+  workflow_dispatch:
+
+jobs:
+  find:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: sudo apt-get install -y binutils
+
+      - name: Find nfulnl_logger string
+        run: |
+          echo "=== nfulnl_logger ==="
+          grep -aboe "nfulnl_logger" analysis/vmlinux | head -5
+
+          echo "=== random_table strings ==="
+          grep -aboe "boot_id" analysis/vmlinux | head -10
+
+          echo "=== version / build strings ==="
+          grep -aboe "6.1.162" analysis/vmlinux | head -5
+
+      - name: Verify symbol addresses in kallsyms
+        run: |
+          grep -E " (init_task|root_task_group|sysctl_bootid|loggers|nfulnl_logger|kmalloc_caches|anon_pipe_buf_ops)$" analysis/kallsyms_full.txt

@@ -1,0 +1,87 @@
+name: BTF-V2-PARSER
+
+on:
+  workflow_dispatch:
+
+jobs:
+  parse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse BTF with pure Python
+        run: |
+          cat > /tmp/p.py << 'PYEOF'
+          import struct, sys
+          data = open('analysis/vmlinux.btf', 'rb').read()
+          print(f"FILE_SIZE={len(data)}")
+          magic, version, flags, hdr_len, type_off, type_len, str_off, str_len = \
+              struct.unpack_from('<HBBIIIII', data, 0)
+          print(f"magic=0x{magic:04x} version={version} hdr_len={hdr_len}")
+          print(f"type_off={type_off} type_len={type_len} str_off={str_off} str_len={str_len}")
+
+          if magic != 0xeb9f:
+              print("ERROR_NOT_BTF")
+              sys.exit(0)
+
+          types_start = hdr_len + type_off
+          types_end = types_start + type_len
+          strings_start = hdr_len + str_off
+
+          def gs(off):
+              if off == 0: return ''
+              end = data.index(b'\x00', strings_start + off)
+              return data[strings_start + off:end].decode('utf-8', errors='replace')
+
+          types = []
+          pos = types_start
+          while pos < types_end:
+              name_off, info, size_type = struct.unpack_from('<III', data, pos)
+              pos += 12
+              kind = (info >> 24) & 0x1f
+              vlen = info & 0xffff
+              name = gs(name_off)
+              if kind in (4, 5):
+                  members = []
+                  for _ in range(vlen):
+                      mn, mt, mo = struct.unpack_from('<III', data, pos)
+                      pos += 12
+                      members.append((gs(mn), mt, mo))
+                  types.append((kind, name, size_type, members))
+              elif kind == 1:
+                  pos += 4
+              elif kind == 3:
+                  pos += 12
+              elif kind == 6:
+                  pos += vlen * 8
+              elif kind == 13:
+                  pos += vlen * 8
+              elif kind == 14:
+                  pos += 4
+              elif kind == 15:
+                  pos += vlen * 12
+              elif kind == 17:
+                  pos += 4
+              elif kind == 19:
+                  pos += vlen * 12
+          print(f"TOTAL_TYPES={len(types)}")
+
+          def dump(name):
+              for k, n, sz, mem in types:
+                  if n == name:
+                      print(f"\n=== {name} size=0x{sz:x} ({sz}) ===")
+                      for mn, mt, mo in mem:
+                          print(f"  +0x{mo//8:04x} bit={mo%8}: {mn}")
+                      return
+              print(f"\n=== {name} NOT_FOUND ===")
+
+          for s in ['pipe_buffer','pipe_inode_info','cred','task_struct','mm_struct','file_operations','selinux_state','rt_mutex_waiter']:
+              dump(s)
+          PYEOF
+          python3 /tmp/p.py > btf_v2_output.txt
+          cat btf_v2_output.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BTF-V2-RESULT
+          path: btf_v2_output.txt
